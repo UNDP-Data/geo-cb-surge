@@ -22,7 +22,7 @@ class ComponentBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def download(self,
+    async def download(self,
                  output_folder: str,
                  bbox: List[float] = None,
                  countries: List[str] = None,
@@ -42,7 +42,7 @@ class ComponentBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def assess(self,
+    async def assess(self,
                admin_file: str,
                output_folder: str,
                mask_file: str = None,
