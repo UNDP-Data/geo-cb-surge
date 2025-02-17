@@ -51,8 +51,8 @@ class Project:
                 "created_on": datetime.datetime.now().isoformat(),
                 "user": os.environ.get('USER', os.environ.get('USERNAME')),
             }
-            if mask:
-                self._cfg_['mask'] = mask
+            # if mask:
+            #     self._cfg_['mask'] = mask
             if comment:
                 self._cfg_['comment'] = comment
 
@@ -104,6 +104,19 @@ class Project:
 
 
                 self.save()
+            if mask is not None:
+                logger.info(f'got mask {mask}')
+                try:
+                    with gdal.OpenEx(mask, gdal.OF_RASTER|gdal.OF_READONLY) as mds:
+                        logger.info(f'Mask is a raster')
+                except RuntimeError as e:
+                    if 'supported' in str(e):
+                        with gdal.OpenEx(mask, gdal.OF_VECTOR|gdal.OF_READONLY) as mds:
+                            logger.info(f'Mask is a vector')
+                            creation_options = 'TILED=YES COMPRESS=ZSTD BIGTIFF=IF_SAFER BLOCKXSIZE=256 BLOCKYSIZE=256 PREDICTOR=2'
+                            
+                            rds = gdal.Rasterize()
+
 
     def load_config(self):
         """Load configuration safely to avoid recursion"""
@@ -166,7 +179,7 @@ class Project:
               help='Name representing a new folder in the current directory' )
 @click.option('-p', '--polygons', required=True, type=str,
               help='Full path to the vector polygons dataset in any OGR supported format' )
-@click.option('-m', '--mask', required=False, type=str,
+@click.option('-m', '--mask', required=False, type=click.Path(exists=True, readable=True, resolve_path=True),
               help='Full path to the mask dataset in any GDAL/OGR supported format. Can be vector or raster' )
 @click.option('-c', '--comment', required=False, type=str,
               help='Any comment you might want to add into the project config' )

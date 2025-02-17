@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 def upload_project(project_folder:str = None,  progress=None, overwrite=False, max_concurrency=8 ):
     """
-    Uploads a folder representing a rapida propject to the Azure  account and file share set through
+    Uploads a folder representing a rapida project to the Azure  account and file share set through
     rapida init
     :param project_folder: str, the full path to the project folder
     :param progress: optional, instance of rich progress to report upload status
