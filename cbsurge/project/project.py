@@ -29,7 +29,7 @@ gdal.UseExceptions()
 class Project:
     config_file_name = 'rapida.json'
     data_folder_name = 'data'
-
+    projection: str = 'ESRI:54009'
     _instance = None
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -37,7 +37,7 @@ class Project:
         return cls._instance
 
     def __init__(self, path: str,polygons: str = None,
-                 mask: str = None, projection: str = 'ESRI:54009',
+                 mask: str = None,
                  comment: str = None, vector_mask_layer: str = 'mask', **kwargs ):
 
         if path is None:
@@ -63,9 +63,9 @@ class Project:
             if comment:
                 self._cfg_['comment'] = comment
             bbox = None
-            target_crs = pCRS.from_user_input(projection)
+            target_crs = pCRS.from_user_input(self.projection)
             target_srs = osr.SpatialReference()
-            target_srs.SetFromUserInput(projection)
+            target_srs.SetFromUserInput(self.projection)
 
             if polygons is not None:
                 l = geopandas.list_layers(polygons)
@@ -90,7 +90,7 @@ class Project:
                 bbox = tuple(map(float,gdf.total_bounds))
                 cols = gdf.columns.tolist()
                 if not ('h3id' in cols and 'undp_admin_level' in cols):
-                    logger.info(f'going to add rapida specific attributes country code')
+                    logger.info(f'going to add country code into "iso3" column')
 
                     if not src_crs.to_epsg() == 4326:
                         left, bottom, right, top = src_bbox
@@ -126,38 +126,39 @@ class Project:
 
                 try:
                     with gdal.OpenEx(mask, gdal.OF_RASTER|gdal.OF_READONLY) as mds:
-                        mds_srs = mds.GetSpatialRef()
-                        #mds_epsg = int(mds_srs.GetAuthorityCode(None))
-                        creation_options = dict(TILED='YES', COMPRESS='ZSTD', BIGTIFF='IF_SAFER', BLOCKXSIZE=256,
-                                                BLOCKYSIZE=256)
 
-                        if not proj_are_equal(mds_srs, target_srs):
-                            # reproject raster mask to target projection
-                            logger.info(f'Reprojecting  raster mask to {target_crs}')
-
-                            warp_options = gdal.WarpOptions(format='GTiff',
-                                                            xRes=constants.DEFAULT_MASK_RESOLUTION_METERS,
-                                                            yRes=constants.DEFAULT_MASK_RESOLUTION_METERS,
-                                                            dstSRS=projection,creationOptions=creation_options,
-                                                            cutlineDSName=self.geopackage_file_path, cutlineLayer='polygons',
-                                                            outputBounds=bbox, outputBoundsSRS=projection, outputType=gdal.GDT_Byte,
-                                                            srcNodata=None, dstNodata="none", targetAlignedPixels=True)
-                            rds = gdal.Warp(destNameOrDestDS=raster_mask_local_path,srcDSOrSrcDSTab=mds, options=warp_options)
-
-                        else:
-                            logger.info(f'Ingesting raster mask ')
-                            proj_win = bbox[0], bbox[-1], bbox[2], bbox[1]
-                            translate_options = gdal.TranslateOptions(
-                                format='GTiff',
-                                xRes=constants.DEFAULT_MASK_RESOLUTION_METERS,
-                                yRes=constants.DEFAULT_MASK_RESOLUTION_METERS,
-                                projWin=proj_win,
-                                projWinSRS=target_srs,
-                                creationOptions=creation_options,
-                                noData='None'
-                            )
-
-                            rds = gdal.Translate(destName=raster_mask_local_path,srcDS=mds,options=translate_options)
+                        # mds_srs = mds.GetSpatialRef()
+                        # #mds_epsg = int(mds_srs.GetAuthorityCode(None))
+                        # creation_options = dict(TILED='YES', COMPRESS='ZSTD', BIGTIFF='IF_SAFER', BLOCKXSIZE=256,
+                        #                         BLOCKYSIZE=256)
+                        #
+                        # if not proj_are_equal(mds_srs, target_srs):
+                        #     # reproject raster mask to target projection
+                        #     logger.info(f'Reprojecting  raster mask to {target_crs}')
+                        #
+                        #     warp_options = gdal.WarpOptions(format='GTiff',
+                        #                                     xRes=constants.DEFAULT_MASK_RESOLUTION_METERS,
+                        #                                     yRes=constants.DEFAULT_MASK_RESOLUTION_METERS,
+                        #                                     dstSRS=self.projection,creationOptions=creation_options,
+                        #                                     cutlineDSName=self.geopackage_file_path, cutlineLayer='polygons',
+                        #                                     outputBounds=bbox, outputBoundsSRS=self.projection, outputType=gdal.GDT_Byte,
+                        #                                     srcNodata=None, dstNodata="none", targetAlignedPixels=True)
+                        #     rds = gdal.Warp(destNameOrDestDS=raster_mask_local_path,srcDSOrSrcDSTab=mds, options=warp_options)
+                        #
+                        # else:
+                        #     logger.info(f'Ingesting raster mask ')
+                        #     proj_win = bbox[0], bbox[-1], bbox[2], bbox[1]
+                        #     translate_options = gdal.TranslateOptions(
+                        #         format='GTiff',
+                        #         xRes=constants.DEFAULT_MASK_RESOLUTION_METERS,
+                        #         yRes=constants.DEFAULT_MASK_RESOLUTION_METERS,
+                        #         projWin=proj_win,
+                        #         projWinSRS=target_srs,
+                        #         creationOptions=creation_options,
+                        #         noData='None'
+                        #     )
+                        #
+                        #     rds = gdal.Translate(destName=raster_mask_local_path,srcDS=mds,options=translate_options)
 
                         with gdal.OpenEx(self.geopackage_file_path, gdal.OF_VECTOR | gdal.OF_UPDATE) as vds:
                             logger.info(f'Polygonizing {raster_mask_local_path} ')
@@ -187,7 +188,7 @@ class Project:
                             lyr = mds.GetLayer(0)
                             lyr_name = lyr.GetName()
                             gdf = geopandas.read_file(mask, layer=lyr_name)
-                            target_crs = pCRS.from_user_input(projection)
+                            target_crs = pCRS.from_user_input(self.projection)
                             src_crs = gdf.crs
                             if not src_crs.is_exact_same(target_crs):
                                 gdf.to_crs(crs=target_crs, inplace=True)
@@ -235,6 +236,11 @@ class Project:
             print(f"Warning: Could not load config file ({self.config_file}): {e}")
 
     @property
+    def raster_mask(self):
+        mask_file = os.path.join(self.data_folder, 'mask.tif' )
+        if os.path.exists(mask_file):
+            return mask_file
+    @property
     def data_folder(self):
         return os.path.join(self.path, self.data_folder_name)
 
@@ -279,6 +285,35 @@ class Project:
         with open(self.config_file, 'w', encoding="utf-8") as cfgf:
             json.dump(data, cfgf, indent=4)
 
+
+
+    def align_raster(self, source_raster=None,
+                     xres=constants.DEFAULT_MASK_RESOLUTION_METERS,
+                     yres=constants.DEFAULT_MASK_RESOLUTION_METERS):
+        target_srs = osr.SpatialReference()
+        target_srs.SetFromUserInput(self.projection)
+
+        warp_options = dict(
+            format='GTiff',
+            xRes=xres,
+            yRes=yres,
+            creationOptions=constants.GTIFF_CREATION_OPTIONS,
+            cutlineDSName=self.geopackage_file_path,
+            cutlineLayer=constants.POLYGONS_LAYER_NAME,
+            cropToCutline=True,
+            targetAlignedPixels=True
+        )
+
+        with gdal.OpenEx(source_raster, gdal.OF_RASTER|gdal.OF_READONLY) as src_ds:
+            src_srs = src_ds.GetSpatialRef()
+            prj_equal = proj_are_equal(src_srs, target_srs)
+            if not prj_equal:
+                # reproject raster mask to target projection
+                logger.debug(f'Reprojecting {src_ds} {target_srs}')
+                warp_options.update(dict(dstSRS=self.projection))
+            dst_path = source_raster.replace('.tif', '_r.tif')
+            rds = gdal.Warp(destNameOrDestDS=dst_path, srcDSOrSrcDSTab=src_ds, **warp_options)
+            return dst_path
 
     def publish(self, yes=False):
         """
@@ -350,3 +385,12 @@ class Project:
                         webbrowser.open(publish_url)
 
 
+if __name__ == '__main__':
+
+    import logging
+    logger = logging.getLogger()
+
+    project_path = '/data/rap/bgd'
+    p = Project(path=project_path)
+    src_raster = '/data/rap/bgd/data/population/female_active/BGD_female_active_r.tif'
+    p.align_raster(source_raster=src_raster)
